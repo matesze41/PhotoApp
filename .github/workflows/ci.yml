@@ -1,0 +1,38 @@
+name: Docker CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+
+jobs:
+  docker-build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t photoapp-ci .
+
+      - name: Install dependencies inside container
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            photoapp-ci \
+            sh -c "npm ci"
+
+      - name: Prisma generate
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            photoapp-ci \
+            sh -c "npx prisma generate"
+
+      - name: Build Next.js
+        run: |
+          docker run --rm \
+            -v ${{ github.workspace }}:/app \
+            photoapp-ci \
+            sh -c "npm run build"
