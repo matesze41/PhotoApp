@@ -1,4 +1,17 @@
 services:
+  db:
+    image: postgres:16-alpine
+    container_name: photoapp-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: photoapp
+      POSTGRES_PASSWORD: photoapp
+      POSTGRES_DB: photoapp
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
   web:
     build:
       context: .
@@ -6,11 +19,14 @@ services:
     ports:
       - "3000:3000"
     environment:
-      DATABASE_URL: "file:/data/dev.db"
+      DATABASE_URL: "postgresql://photoapp:photoapp@db:5432/photoapp"
+      AUTH_SECRET: "photoapp-local-dev-secret-change-me"
       UPLOAD_DIR: "/data/uploads"
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
       NEXT_TELEMETRY_DISABLED: "1"
+    depends_on:
+      - db
     volumes:
       - .:/app
       - node_modules:/app/node_modules
@@ -22,15 +38,12 @@ services:
         if [ ! -x node_modules/.bin/next ]; then
           if [ -f package-lock.json ]; then npm ci; else npm install; fi
         fi
-
-        # Prisma csak akkor, ha már van schema
-        if [ -f prisma/schema.prisma ]; then
-          npx prisma generate || true
-        fi
-
+        npx prisma generate || true
+        npx prisma migrate deploy || true
         mkdir -p "$UPLOAD_DIR"
         npm run dev -- --hostname 0.0.0.0
 
 volumes:
   node_modules:
   data:
+  postgres_data:

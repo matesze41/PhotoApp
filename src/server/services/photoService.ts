@@ -16,7 +16,7 @@ export function validatePhotoName(name: string) {
   return n;
 }
 
-export async function createPhotoFromUpload(params: { name: string; file: File }) {
+export async function createPhotoFromUpload(params: { name: string; file: File; userId: string }) {
   const name = validatePhotoName(params.name);
 
   if (!params.file || params.file.size === 0) {
@@ -31,22 +31,23 @@ export async function createPhotoFromUpload(params: { name: string; file: File }
 
   return repo.createPhoto({
     name,
+    userId: params.userId,
     storageKey: key,
     originalFilename: params.file.name || undefined,
     mimeType: params.file.type || undefined,
   });
 }
 
-export async function deletePhotoById(id: string) {
-  const photo = await repo.getPhoto(id);
+export async function deletePhotoById(id: string, userId: string) {
+  const photo = await repo.getPhoto(id, userId);
   if (!photo) throw new Error("Nincs ilyen kép.");
 
   await storage.deleteObject(photo.storageKey);
-  await repo.deletePhoto(id);
+  await repo.deletePhoto(id, userId);
 }
 
 export async function getPhotoImage(id: string) {
-  const photo = await repo.getPhoto(id);
+  const photo = await repo.getPhotoPublic(id);
   if (!photo) throw new Error("Nincs ilyen kép.");
 
   const data = await storage.getObject(photo.storageKey);

@@ -9,6 +9,7 @@ type PhotoRow = {
   id: string;
   name: string;
   createdAt: string; // ISO
+  canDelete: boolean;
 };
 
 function pad2(n: number) {
@@ -23,6 +24,13 @@ function formatHuDate(iso: string) {
 }
 
 export default function PhotoAlbum() {
+  const [authState, setAuthState] = useState<"checking" | "authenticated" | "unauthenticated">("checking");
+  const [authMode, setAuthMode] = useState<"login" | "register">("login");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [authBusy, setAuthBusy] = useState(false);
+  const [authError, setAuthError] = useState<string | null>(null);
+
   const [items, setItems] = useState<PhotoRow[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
@@ -39,6 +47,15 @@ export default function PhotoAlbum() {
     setError(null);
     const qs = new URLSearchParams({ sort: sortBy, dir });
     const res = await fetch(`/api/photos?${qs.toString()}`, { cache: "no-store" });
+
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      setError(body?.error ?? "Betöltési hiba");
+      return;
+    }
+
+    const authenticatedHeader = res.headers.get("x-authenticated");
+    setAuthState(authenticatedHeader === "1" ? "authenticated" : "unauthenticated");
     const data = (await res.json()) as PhotoRow[];
     setItems(data);
     if (selectedId && !data.some((x) => x.id === selectedId)) setSelectedId(null);
@@ -50,6 +67,52 @@ export default function PhotoAlbum() {
   }, [sortBy, dir]);
 
   const selected = useMemo(() => items.find((x) => x.id === selectedId) ?? null, [items, selectedId]);
+
+  async function onAuthSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setAuthError(null);
+
+    if (!email.trim() || !password) {
+      setAuthError("Email és jelszó kötelező.");
+      return;
+    }
+
+    setAuthBusy(true);
+    try {
+      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim(), password }),
+      });
+
+      const body = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setAuthError(body?.error ?? "Sikertelen hitelesítés");
+        setAuthState("unauthenticated");
+        return;
+      }
+
+      setPassword("");
+      setAuthState("authenticated");
+      await load();
+    } finally {
+      setAuthBusy(false);
+    }
+  }
+
+  async function onLogout() {
+    setAuthError(null);
+    setError(null);
+    setAuthBusy(true);
+    try {
+      await fetch("/api/auth/logout", { method: "POST" });
+      setAuthState("unauthenticated");
+      await load();
+    } finally {
+      setAuthBusy(false);
+    }
+  }
 
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
@@ -66,6 +129,13 @@ export default function PhotoAlbum() {
       form.set("file", file);
 
       const res = await fetch("/api/photos", { method: "POST", body: form });
+
+      if (res.status === 401) {
+        setAuthState("unauthenticated");
+        setError("A művelethez be kell jelentkezni.");
+        return;
+      }
+
       const body = await res.json().catch(() => ({}));
 
       if (!res.ok) {
@@ -86,6 +156,13 @@ export default function PhotoAlbum() {
     setBusy(true);
     try {
       const res = await fetch(`/api/photos/${id}`, { method: "DELETE" });
+
+      if (res.status === 401) {
+        setAuthState("unauthenticated");
+        setError("A művelethez be kell jelentkezni.");
+        return;
+      }
+
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(body?.error ?? "Törlési hiba");
@@ -99,6 +176,82 @@ export default function PhotoAlbum() {
 
   return (
     <div className="mx-auto max-w-4xl p-6 space-y-6">
+      <div className="rounded-xl border p-4 space-y-3">
+        <div className="text-lg font-semibold">Azonosítás</div>
+
+        {authState === "authenticated" ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <div className="text-sm text-green-600">Bejelentkezve: {email || "aktív munkamenet"}</div>
+            <button
+              className="rounded-md border px-3 py-1 text-sm disabled:opacity-50"
+              type="button"
+              onClick={() => void onLogout()}
+              disabled={authBusy || busy}
+            >
+              Kijelentkezés
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={onAuthSubmit} className="space-y-3">
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                className={`rounded-md border px-3 py-1 text-sm ${authMode === "login" ? "bg-orange-700 text-white border-orange-700" : ""}`}
+                onClick={() => setAuthMode("login")}
+                disabled={authBusy || authState === "checking"}
+              >
+                Bejelentkezés
+              </button>
+              <button
+                type="button"
+                className={`rounded-md border px-3 py-1 text-sm ${authMode === "register" ? "bg-orange-700 text-white border-orange-700" : ""}`}
+                onClick={() => setAuthMode("register")}
+                disabled={authBusy || authState === "checking"}
+              >
+                Regisztráció
+              </button>
+            </div>
+
+            <div className="grid gap-3 md:grid-cols-2">
+              <label className="space-y-1">
+                <div className="text-sm">Email</div>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  type="email"
+                  autoComplete="email"
+                  disabled={authBusy || authState === "checking"}
+                />
+              </label>
+
+              <label className="space-y-1">
+                <div className="text-sm">Jelszó</div>
+                <input
+                  className="w-full rounded-md border px-3 py-2"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  type="password"
+                  autoComplete={authMode === "login" ? "current-password" : "new-password"}
+                  disabled={authBusy || authState === "checking"}
+                />
+              </label>
+            </div>
+
+            <button
+              className="rounded-md bg-orange-700 text-white px-4 py-2 disabled:opacity-50"
+              type="submit"
+              disabled={authBusy || authState === "checking"}
+            >
+              {authMode === "login" ? "Belépés" : "Regisztráció"}
+            </button>
+
+            {authState === "checking" ? <div className="text-sm text-gray-500">Munkamenet ellenőrzése...</div> : null}
+            {authError ? <div className="text-sm text-red-600">{authError}</div> : null}
+          </form>
+        )}
+      </div>
+
       <div className="rounded-xl border p-4">
         <form onSubmit={onUpload} className="space-y-3">
           <div className="text-lg font-semibold">Feltöltés</div>
@@ -111,7 +264,7 @@ export default function PhotoAlbum() {
                 value={name}
                 onChange={(e) => setName(e.target.value)}
                 maxLength={40}
-                disabled={busy}
+                disabled={busy || authState !== "authenticated"}
               />
             </label>
 
@@ -124,13 +277,13 @@ export default function PhotoAlbum() {
                     type="file"
                     accept="image/*"
                     onChange={(e) => setFile(e.target.files?.[0] ?? null)}
-                    disabled={busy}
+                  disabled={busy || authState !== "authenticated"}
                 />
 
                 <label
                     htmlFor="fileInput"
                     className={`inline-block cursor-pointer rounded-md bg-orange-700 hover:bg-orange-600 text-white px-4 py-2 ${
-                    busy ? "pointer-events-none opacity-50" : ""
+                    busy || authState !== "authenticated" ? "pointer-events-none opacity-50" : ""
                     }`}
                 >
                     Fájl kiválasztása
@@ -146,11 +299,15 @@ export default function PhotoAlbum() {
 
           <button
             className="rounded-md bg-orange-700 text-white px-4 py-2 disabled:opacity-50"
-            disabled={busy}
+            disabled={busy || authState !== "authenticated"}
             type="submit"
           >
             Feltöltés
           </button>
+
+          {authState !== "authenticated" ? (
+            <div className="text-sm text-gray-500">Feltöltéshez jelentkezz be.</div>
+          ) : null}
 
           {error ? <div className="text-sm text-red-600">{error}</div> : null}
         </form>
@@ -224,15 +381,17 @@ export default function PhotoAlbum() {
                     <div className="text-xs text-gray-600">{formatHuDate(p.createdAt)}</div>
                   </button>
 
-                  <button
-                    className="rounded-md border px-2 py-1 text-xs disabled:opacity-50"
-                    onClick={() => void onDelete(p.id)}
-                    disabled={busy}
-                    type="button"
-                    title="Törlés"
-                  >
-                    Törlés
-                  </button>
+                  {p.canDelete ? (
+                    <button
+                      className="rounded-md border px-2 py-1 text-xs disabled:opacity-50"
+                      onClick={() => void onDelete(p.id)}
+                      disabled={busy}
+                      type="button"
+                      title="Saját kép törlése"
+                    >
+                      Törlés
+                    </button>
+                  ) : null}
                 </div>
               ))}
             </div>
