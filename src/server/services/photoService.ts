@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 
 import { storage } from "@/server/storage/storage";
 import * as repo from "@/server/repositories/photoRepository";
+import { AppError } from "@/server/http/errors";
 
 function normalizeName(name: string): string {
   return name.trim();
@@ -11,8 +12,22 @@ function normalizeName(name: string): string {
 
 export function validatePhotoName(name: string) {
   const n = normalizeName(name);
-  if (!n) throw new Error("A név kötelező.");
-  if (n.length > 40) throw new Error("A név maximum 40 karakter lehet.");
+  if (!n) {
+    throw new AppError({
+      message: "A név kötelező.",
+      status: 400,
+      code: "VALIDATION_ERROR",
+    });
+  }
+
+  if (n.length > 40) {
+    throw new AppError({
+      message: "A név maximum 40 karakter lehet.",
+      status: 400,
+      code: "VALIDATION_ERROR",
+    });
+  }
+
   return n;
 }
 
@@ -20,7 +35,11 @@ export async function createPhotoFromUpload(params: { name: string; file: File; 
   const name = validatePhotoName(params.name);
 
   if (!params.file || params.file.size === 0) {
-    throw new Error("A fájl kötelező.");
+    throw new AppError({
+      message: "A fájl kötelező.",
+      status: 400,
+      code: "VALIDATION_ERROR",
+    });
   }
 
   const ext = path.extname(params.file.name || "").toLowerCase();
@@ -40,7 +59,13 @@ export async function createPhotoFromUpload(params: { name: string; file: File; 
 
 export async function deletePhotoById(id: string, userId: string) {
   const photo = await repo.getPhoto(id, userId);
-  if (!photo) throw new Error("Nincs ilyen kép.");
+  if (!photo) {
+    throw new AppError({
+      message: "Nincs ilyen kép.",
+      status: 404,
+      code: "NOT_FOUND",
+    });
+  }
 
   await storage.deleteObject(photo.storageKey);
   await repo.deletePhoto(id, userId);
@@ -48,7 +73,13 @@ export async function deletePhotoById(id: string, userId: string) {
 
 export async function getPhotoImage(id: string) {
   const photo = await repo.getPhotoPublic(id);
-  if (!photo) throw new Error("Nincs ilyen kép.");
+  if (!photo) {
+    throw new AppError({
+      message: "Nincs ilyen kép.",
+      status: 404,
+      code: "NOT_FOUND",
+    });
+  }
 
   const data = await storage.getObject(photo.storageKey);
   return { data, mimeType: photo.mimeType ?? "application/octet-stream" };

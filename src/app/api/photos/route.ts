@@ -1,6 +1,8 @@
 import { NextRequest } from "next/server";
 import { prisma } from "@/server/db/prisma";
 import { createPhotoFromUpload } from "@/server/services/photoService";
+import { AppError } from "@/server/http/errors";
+import { withErrorHandling } from "@/server/http/withErrorHandling";
 
 type PhotoListItem = {
   id: string;
@@ -20,11 +22,12 @@ function getAuthedUserId(req: NextRequest) {
  * GET /api/photos
  * Minden kép listázása publikus
  */
-export async function GET(req: NextRequest) {
-  const viewerUserId = getAuthedUserId(req);
+export const GET = withErrorHandling(async (req: Request) => {
+  const nextReq = req as NextRequest;
+  const viewerUserId = getAuthedUserId(nextReq);
   const isAuthenticated = Boolean(viewerUserId);
 
-  const url = new URL(req.url);
+  const url = new URL(nextReq.url);
   const sortRaw = (url.searchParams.get("sort") ?? "date").toLowerCase();
   const dirRaw = (url.searchParams.get("dir") ?? "desc").toLowerCase();
 
@@ -55,43 +58,44 @@ export async function GET(req: NextRequest) {
       },
     }
   );
-}
+});
 
 /**
  * POST /api/photos
  * Feltöltés – csak bejelentkezett user
  */
-export async function POST(req: NextRequest) {
-  const userId = getAuthedUserId(req);
+export const POST = withErrorHandling(async (req: Request) => {
+  const nextReq = req as NextRequest;
+  const userId = getAuthedUserId(nextReq);
 
   if (!userId) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    throw new AppError({
+      message: "Unauthorized",
+      status: 401,
+      code: "UNAUTHORIZED",
+    });
   }
 
-  try {
-    const form = await req.formData();
-    const name = String(form.get("name") ?? "");
-    const file = form.get("file");
+  const form = await nextReq.formData();
+  const name = String(form.get("name") ?? "");
+  const file = form.get("file");
 
-    if (!(file instanceof File)) {
-      return Response.json(
-        { error: "file mező hiányzik vagy nem fájl." },
-        { status: 400 }
-      );
-    }
-
-    const created = await createPhotoFromUpload({ name, file, userId });
-
-    return Response.json(
-      {
-        id: created.id,
-        name: created.name,
-        createdAt: created.createdAt.toISOString(),
-      },
-      { status: 201 }
-    );
-  } catch (e) {
-    const msg = e instanceof Error ? e.message : "Ismeretlen hiba";
-    return Response.json({ error: msg }, { status: 400 });
+  if (!(file instanceof File)) {
+    throw new AppError({
+      message: "file mező hiányzik vagy nem fájl.",
+      status: 400,
+      code: "VALIDATION_ERROR",
+    });
   }
-}
+
+  const created = await createPhotoFromUpload({ name, file, userId });
+
+  return Response.json(
+    {
+      id: created.id,
+      name: created.name,
+      createdAt: created.createdAt.toISOString(),
+    },
+    { status: 201 }
+  );
+});
