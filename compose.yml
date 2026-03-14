@@ -21,6 +21,7 @@ services:
     environment:
       DATABASE_URL: "postgresql://photoapp:photoapp@db:5432/photoapp"
       AUTH_SECRET: "photoapp-local-dev-secret-change-me"
+      STORAGE_BACKEND: "local"
       UPLOAD_DIR: "/data/uploads"
       CHOKIDAR_USEPOLLING: "true"
       WATCHPACK_POLLING: "true"
@@ -40,7 +41,9 @@ services:
         fi
         npx prisma generate || true
         npx prisma migrate deploy || true
-        mkdir -p "$UPLOAD_DIR"
+        if [ "${STORAGE_BACKEND:-local}" = "local" ]; then
+          mkdir -p "$$UPLOAD_DIR"
+        fi
         npm run dev -- --hostname 0.0.0.0
 
 volumes:
