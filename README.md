@@ -92,3 +92,31 @@ Backend selection is automatic via `STORAGE_BACKEND`.
 - Set `DATABASE_URL` to your Azure PostgreSQL connection string.
 - Set `STORAGE_BACKEND=azure` and provide Azure Blob variables.
 - Run migrations during deploy: `npx prisma migrate deploy`.
+
+## Deployed Azure Resources (Bird's-Eye View)
+
+The application is deployed as a small-cost Azure setup using mostly existing resources in a single Azure resource group:
+
+- **Container Registry** (Azure Container Registry)
+  - Stores the built `photoapp` container image.
+- **Container Apps Environment** (Azure Container Apps)
+  - Hosts shared infrastructure for Container Apps revisions.
+- **Container App**
+  - Runs the Next.js application publicly over HTTPS.
+  - Uses environment variables/secrets for database, storage, and Auth.js configuration.
+- **PostgreSQL**: Flexible Server + application database
+  - Stores application metadata (users, photo metadata, relations).
+  - Prisma migrations are applied with `npx prisma migrate deploy`.
+- **Blob Storage**: Storage account + blob container
+  - Stores uploaded image binaries.
+  - Selected via `STORAGE_BACKEND=azure`.
+- **Log Analytics Workspace**
+  - Receives Container Apps logs/diagnostics for monitoring and troubleshooting.
+
+### Resource Flow
+
+1. User requests arrive at the Container App.
+2. Auth/session and API logic run in the app container.
+3. Photo files are read/written in Azure Blob Storage.
+4. Structured metadata is read/written in Azure Database for PostgreSQL.
+5. Container/runtime logs are forwarded to Log Analytics.
