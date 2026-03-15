@@ -20,7 +20,6 @@ services:
       - "3000:3000"
     environment:
       DATABASE_URL: "postgresql://photoapp:photoapp@db:5432/photoapp"
-      AUTH_SECRET: "photoapp-local-dev-secret-change-me"
       STORAGE_BACKEND: "local"
       UPLOAD_DIR: "/data/uploads"
       CHOKIDAR_USEPOLLING: "true"
@@ -36,8 +35,12 @@ services:
       - sh
       - -lc
       - |
-        if [ ! -x node_modules/.bin/next ]; then
-          if [ -f package-lock.json ]; then npm ci; else npm install; fi
+        if [ -f package-lock.json ]; then
+          if [ ! -f node_modules/.package-lock.json ] || ! cmp -s package-lock.json node_modules/.package-lock.json; then
+            npm ci
+          fi
+        elif [ ! -x node_modules/.bin/next ]; then
+          npm install
         fi
         npx prisma generate || true
         npx prisma migrate deploy || true

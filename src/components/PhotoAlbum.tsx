@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { signIn, signOut } from "next-auth/react";
 
 type SortBy = "name" | "date";
 type SortDir = "asc" | "desc";
@@ -79,16 +80,31 @@ export default function PhotoAlbum() {
 
     setAuthBusy(true);
     try {
-      const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), password }),
+      const normalizedEmail = email.trim();
+
+      if (authMode === "register") {
+        const registerRes = await fetch("/api/auth/register", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: normalizedEmail, password }),
+        });
+
+        const registerBody = await registerRes.json().catch(() => ({}));
+        if (!registerRes.ok) {
+          setAuthError(registerBody?.error ?? "Sikertelen hitelesítés");
+          setAuthState("unauthenticated");
+          return;
+        }
+      }
+
+      const result = await signIn("credentials", {
+        email: normalizedEmail,
+        password,
+        redirect: false,
       });
 
-      const body = await res.json().catch(() => ({}));
-      if (!res.ok) {
-        setAuthError(body?.error ?? "Sikertelen hitelesítés");
+      if (!result || result.error) {
+        setAuthError("Sikertelen hitelesítés");
         setAuthState("unauthenticated");
         return;
       }
@@ -106,7 +122,7 @@ export default function PhotoAlbum() {
     setError(null);
     setAuthBusy(true);
     try {
-      await fetch("/api/auth/logout", { method: "POST" });
+      await signOut({ redirect: false });
       setAuthState("unauthenticated");
       await load();
     } finally {

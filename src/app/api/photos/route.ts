@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { auth } from "@/auth";
 import { prisma } from "@/server/db/prisma";
 import { createPhotoFromUpload } from "@/server/services/photoService";
 import { AppError } from "@/server/http/errors";
@@ -14,8 +14,9 @@ type PhotoListItem = {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function getAuthedUserId(req: NextRequest) {
-  return req.headers.get("x-auth-user-id");
+function getSessionUserId(session: unknown): string | null {
+  const maybeUser = (session as { user?: { id?: string } } | null)?.user;
+  return maybeUser?.id ?? null;
 }
 
 /**
@@ -23,11 +24,11 @@ function getAuthedUserId(req: NextRequest) {
  * Minden kép listázása publikus
  */
 export const GET = withErrorHandling(async (req: Request) => {
-  const nextReq = req as NextRequest;
-  const viewerUserId = getAuthedUserId(nextReq);
+  const session = await auth();
+  const viewerUserId = getSessionUserId(session);
   const isAuthenticated = Boolean(viewerUserId);
 
-  const url = new URL(nextReq.url);
+  const url = new URL(req.url);
   const sortRaw = (url.searchParams.get("sort") ?? "date").toLowerCase();
   const dirRaw = (url.searchParams.get("dir") ?? "desc").toLowerCase();
 
@@ -65,8 +66,8 @@ export const GET = withErrorHandling(async (req: Request) => {
  * Feltöltés – csak bejelentkezett user
  */
 export const POST = withErrorHandling(async (req: Request) => {
-  const nextReq = req as NextRequest;
-  const userId = getAuthedUserId(nextReq);
+  const session = await auth();
+  const userId = getSessionUserId(session);
 
   if (!userId) {
     throw new AppError({
@@ -76,7 +77,7 @@ export const POST = withErrorHandling(async (req: Request) => {
     });
   }
 
-  const form = await nextReq.formData();
+  const form = await req.formData();
   const name = String(form.get("name") ?? "");
   const file = form.get("file");
 

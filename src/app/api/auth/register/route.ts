@@ -1,8 +1,5 @@
 import { prisma } from "@/server/db/prisma";
-import { Prisma } from "@prisma/client";
 import bcrypt from "bcryptjs";
-import { cookies } from "next/headers";
-import { createSessionToken, getSessionCookieOptions, SESSION_COOKIE } from "@/server/auth/session";
 import { AppError } from "@/server/http/errors";
 import { withErrorHandling } from "@/server/http/withErrorHandling";
 
@@ -33,13 +30,9 @@ export const POST = withErrorHandling(async (req: Request) => {
       data: { email: normalizedEmail, password: hashed },
     });
 
-    const token = await createSessionToken(user.id);
-    const cookieStore = await cookies();
-    cookieStore.set(SESSION_COOKIE, token, getSessionCookieOptions());
-
     return Response.json({ id: user.id, email: user.email });
   } catch (error) {
-    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+    if ((error as { code?: string })?.code === "P2002") {
       throw new AppError({
         message: "User exists",
         status: 409,

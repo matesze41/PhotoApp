@@ -13,7 +13,7 @@ The project follows a layered architecture:
 2. **API Layer**
 - Route handlers are in `src/app/api/**/route.ts`.
 - Endpoints expose REST-style operations for auth and photos:
-  - `/api/auth/login`, `/api/auth/register`, `/api/auth/logout`
+  - `/api/auth/register`, `/api/auth/[...nextauth]`
   - `/api/photos`, `/api/photos/[id]`, `/api/photos/[id]/image`
 
 3. **Service Layer**
@@ -33,8 +33,8 @@ The project follows a layered architecture:
   - Azure Blob Storage (`azureBlobStorage.ts`) for cloud use.
 
 6. **Authentication**
-- Cookie-based signed session token in `src/server/auth/session.ts`.
-- `src/proxy.ts` injects authenticated user ID for photo API requests and blocks unauthorized write operations.
+- Auth.js (`next-auth`) with credentials provider configured in `src/auth.ts`.
+- Protected photo operations resolve user identity from the Auth.js session in route handlers.
 
 ## Cloud Scalability
 
@@ -69,8 +69,10 @@ If deployed to a cloud provider, the architecture scales as follows:
 ## Migration Details
 ### Environment variables
 
-- `DATABASE_URL`: PostgreSQL connection string (Azure PostgreSQL in production).
-- `AUTH_SECRET`: secret used for signing session cookies.
+- `DATABASE_URL`: PostgreSQL connection string.
+  In Docker Compose this is set in `compose.yml` (`postgresql://photoapp:photoapp@db:5432/photoapp`).
+  The `.env` value is only a local override for non-compose runs.
+- `AUTH_SECRET`: high-entropy secret used by Auth.js to protect/encrypt session and token data.
 - `STORAGE_BACKEND`: `local` or `azure`. (Defaults to local)
 - `UPLOAD_DIR`: local filesystem upload path (used only when `STORAGE_BACKEND=local`).
 - `AZURE_STORAGE_CONNECTION_STRING`: required when `STORAGE_BACKEND=azure`.
