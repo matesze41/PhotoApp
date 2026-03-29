@@ -189,6 +189,22 @@
             </elementProp>
           </HTTPSamplerProxy>
           <hashTree>
+            <JSR223PreProcessor guiclass="TestBeanGUI" testclass="JSR223PreProcessor" testname="Set per-thread auth email" enabled="true">
+              <stringProp name="scriptLanguage">groovy</stringProp>
+              <stringProp name="parameters"></stringProp>
+              <stringProp name="filename"></stringProp>
+              <stringProp name="cacheKey">auth-email-init</stringProp>
+              <stringProp name="script">if (!vars.get('AUTH_EMAIL_READY')) {
+  def runId = vars.get('RUN_ID')
+  if (runId == null || runId.isEmpty()) {
+    runId = String.valueOf(System.currentTimeMillis())
+    vars.put('RUN_ID', runId)
+  }
+  vars.put('USER_EMAIL', "loaduser_${runId}_${ctx.getThreadNum()}@example.test")
+  vars.put('AUTH_EMAIL_READY', '1')
+}</stringProp>
+            </JSR223PreProcessor>
+            <hashTree/>
             <HeaderManager guiclass="HeaderPanel" testclass="HeaderManager" testname="Register JSON Header" enabled="true">
               <collectionProp name="HeaderManager.headers">
                 <elementProp name="" elementType="Header">
