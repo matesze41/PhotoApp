@@ -120,3 +120,125 @@ The application is deployed as a small-cost Azure setup using mostly existing re
 3. Photo files are read/written in Azure Blob Storage.
 4. Structured metadata is read/written in Azure Database for PostgreSQL.
 5. Container/runtime logs are forwarded to Log Analytics.
+
+
+
+
+---
+
+# JMeter Stress Test – Azure Container Apps Autoscaling
+
+## Overview
+
+This repository contains a JMeter-based stress test (`photoapp-azure-stress.jmx`) designed to evaluate the autoscaling behavior of an Azure Container Apps deployment.
+
+The goal of the test is **not precise throughput benchmarking**, but rather:
+- to trigger **automatic scale-out**
+- to observe **scale-in behavior**
+- to validate **event-driven autoscaling (KEDA)** under realistic mixed traffic
+
+---
+
+## Test Architecture
+
+The stress test is split into **two parallel thread groups**:
+
+- Public (unauthenticated) traffic
+- Authenticated session-based traffic
+
+These run simultaneously to simulate real-world usage.
+
+---
+
+## 1) Public Read Load
+
+- Users: `USERS_PUBLIC=12`
+- Ramp-up: `60 seconds`
+- Loops per user: `40`
+
+### Requests per loop:
+- `GET /api/photos?sort=date&dir=desc`
+- `GET /api/photos?sort=name&dir=asc`
+
+### Total planned requests:
+- `12 * 40 * 2 = 960`
+
+---
+
+## 2) Authenticated Session Flow
+
+- Users: `USERS_AUTH=6`
+- Ramp-up: `60 seconds`
+- Loops per user: `40`
+
+### Initialization (once per user):
+- `POST /api/auth/register`
+- `GET /api/auth/csrf`
+- `POST /api/auth/callback/credentials`
+- `GET /api/auth/session`
+
+### Per loop:
+- `GET /api/photos`
+- optional `GET /api/photos/{id}/image`
+- `POST /api/auth/signout`
+
+### Minimum requests:
+- Init: `6 * 4 = 24`
+- Loop: `6 * 40 * 2 = 480`
+- Total: `504+`
+
+---
+
+## Load Model
+
+- Closed-model (fixed concurrent users)
+- No fixed RPS
+- No throughput timer
+
+---
+
+## Azure Autoscaling Configuration
+
+- Min replicas: `0`
+- Max replicas: `3`
+- Scaling type: HTTP
+- Concurrency threshold: `3`
+- Cooldown: `300 seconds`
+
+---
+
+## Observations
+
+### Scale-Out
+
+- 1 → 2 → 3 replicas observed
+- replicas created at different timestamps → event-driven scaling
+
+### Load
+
+- ~1700 requests
+- ~1 minute
+- ~23 req/sec
+
+### Errors
+
+- ~0.65% error rate (400, 409)
+- related to auth flow, not scaling
+
+### Scale-In
+
+- after ~5 minutes:
+  - 3 → 0 replicas
+
+
+## Conclusion
+
+The load test demonstrated that the application successfully scales out under increased concurrent traffic. As the number of simultaneous requests exceeded the configured threshold, the system automatically scaled from one to three replicas, reaching the defined maximum.
+
+The scaling behavior was incremental rather than instantaneous, indicating that autoscaling decisions were driven by real-time load conditions rather than pre-allocation.
+
+After the load test finished, the system did not scale down immediately. Instead, it respected the configured cooldown period and gradually scaled back to zero replicas, confirming correct scale-in behavior and cost-efficient resource usage.
+
+The results also showed that autoscaling is primarily driven by concurrent requests rather than overall request rate. This highlights the importance of properly designing load tests to generate sufficient parallelism.
+
+A small number of HTTP errors (409 responses) were observed during the test, likely due to repeated authentication flows, backend correctly rejected duplicate users.
